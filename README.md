@@ -97,7 +97,3 @@ All attack scenarios are simulated using mock data and controlled logic. The app
 ## Contribution
 
 Contributions are welcome. Improvements to simulations, UI, or learning flow are encouraged.
-
-## License
-
-Add an appropriate open-source license (such as MIT) if you plan to distribute this project publicly.
